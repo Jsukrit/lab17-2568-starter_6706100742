@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt, { hash } from "bcrypt";
 dotenv.config();
 
 // import authentication middleware
@@ -68,7 +68,72 @@ router.post("/sigin", async (req: Request, res: Response) => {
   }
 });
 // POST /api/v2/auth/signup
-router.post("/signup", async (req: Request, res: Response) => {});
+router.post("/signup", async (req: Request, res: Response) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      username,
+      dateOfBirth,
+      password,
+      confirmPassword,
+    } = req.body;
+
+    // ตรวจสอบ password match
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Password and confirm password do not match",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        username: username,
+      },
+    });
+
+    // if user already exists
+    if (user) {
+      return res.status(400).json({
+        success: false,
+        message: `Username: ${username} already exists`,
+      });
+    }
+
+    const hashed_pass = await bcrypt.hash(password, 10);
+    const dob = new Date(dateOfBirth);
+
+    const User_signup = {
+      userId: uuidv4(),
+      firstName,
+      lastName,
+      username,
+      dateOfBirth: dob,
+      password: hashed_pass,
+      createAt: new Date(),
+      updateAt: new Date(),
+    };
+
+    const created = await prisma.user.create({ data: User_signup });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        ...User_signup,
+        dateOfBirth: dob.toISOString(),
+        createAt: User_signup.createAt.toISOString(),
+        updateAt: User_signup.updateAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: err instanceof Error ? err.message : err,
+    });
+  }
+});
 
 // POST /api/v2/auth/signout
 router.post("/signout", authenticateToken, (req: Request, res: Response) => {
